@@ -1,4 +1,4 @@
-//===- MipsRegisterInfo.td - Mips Register defs ------------*- tablegen -*-===//
+//===- RiscoRegisterInfo.td - Risco Register defs ------------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,176 +7,128 @@
 //
 //===----------------------------------------------------------------------===//
 
-//===----------------------------------------------------------------------===//
-//  Describe MIPS instructions format
-//
-//  CPU INSTRUCTION FORMATS
-//
-//  opcode  - operation code.
-//  rs      - src reg.
-//  rt      - dst reg (on a 2 regs instr) or src reg (on a 3 reg instr).
-//  rd      - dst reg, only used on 3 regs instr.
-//  shamt   - only used on shift instructions, contains the shift amount.
-//  funct   - combined with opcode field give us an operation code.
-//
-//===----------------------------------------------------------------------===//
 
-// Generic Mips Format
-class MipsInst<dag outs, dag ins, string asmstr, list<dag> pattern, 
-               InstrItinClass itin>: Instruction 
+// Generic Risco Format
+class RiscoInstr<bits<2> _t1_t0, bits<5> _c4_c0, bits<1> _aps,
+                dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
 {
   field bits<32> Inst;
 
-  let Namespace = "Mips";
+  let Namespace = "Risco";
 
-  bits<6> opcode;
+  bits<2> t1_t0 = _t1_t0;
+  bits<5> c4_c0 = _c4_c0;
+  bits<1> aps   = _aps;
 
-  // Top 5 bits are the 'opcode' field
-  let Inst{31-26} = opcode;   
-  
+  bits<2> f1_f0;
+  bits<5> dst;
+
+  let Inst{31-30} = t1_t0;
+  let Inst{29-25} = c4_c0;
+  let Inst{24}    = aps;
+  let Inst{23-22} = f1_f0;
+  let Inst{21-17} = dst;
+
   dag OutOperandList = outs;
   dag InOperandList  = ins;
 
   let AsmString   = asmstr;
   let Pattern     = pattern;
-  let Itinerary   = itin;
 }
 
-// Mips Pseudo Instructions Format
-class MipsPseudo<dag outs, dag ins, string asmstr, list<dag> pattern>:
-      MipsInst<outs, ins, asmstr, pattern, IIPseudo>;
+
+// Risco Pseudo Instructions Format
+class RiscoPseudo<dag outs, dag ins, string asmstr, list<dag> pattern> :
+      RiscoInstr<outs, ins, asmstr, pattern, IIPseudo>;
+
 
 //===----------------------------------------------------------------------===//
-// Format R instruction class in Mips : <|opcode|rs|rt|rd|shamt|funct|>
+// Format 1 instruction class in Risco
 //===----------------------------------------------------------------------===//
 
-class FR<bits<6> op, bits<6> _funct, dag outs, dag ins, string asmstr,
-         list<dag> pattern, InstrItinClass itin>:
-      MipsInst<outs, ins, asmstr, pattern, itin> 
+class F1<bits<2> T, bits<5> C, bits<1> APS,
+         dag outs, dag ins, string asmstr,
+         list<dag> pattern> :
+      RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
-  bits<5>  rd;
-  bits<5>  rs;
-  bits<5>  rt;
-  bits<5>  shamt;
-  bits<6>  funct;
+  bits<5> ft1;
+  bits<5> ft2;
 
-  let opcode = op;
-  let funct  = _funct;
+  let f1_f0 = 0b00;
 
-  let Inst{25-21} = rs;
-  let Inst{20-16} = rt; 
-  let Inst{15-11} = rd;
-  let Inst{10-6}  = shamt;
-  let Inst{5-0}   = funct;
+  let Inst{16-12} = ft1;
+  let Inst{11}    = 0;
+  let Inst{10-6}  = ft2;
+  let Inst{5-0}   = 0;
 }
 
+
 //===----------------------------------------------------------------------===//
-// Format I instruction class in Mips : <|opcode|rs|rt|immediate|>
+// Format 2 instruction class in Risco
 //===----------------------------------------------------------------------===//
 
-class FI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
-         InstrItinClass itin>: MipsInst<outs, ins, asmstr, pattern, itin> 
+class F2<bits<2> T, bits<5> C, bits<1> APS,
+         dag outs, dag ins, string asmstr,
+         list<dag> pattern> :
+      RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
-  bits<5>  rt;
-  bits<5>  rs;
-  bits<16> imm16;
+  bits<5> ft1;
+  bits<11> kpe;
 
-  let opcode = op;
+  let f1_f0 = 0b00;
 
-  let Inst{25-21} = rs;
-  let Inst{20-16} = rt; 
-  let Inst{15-0}  = imm16;
+  let Inst{16-12} = ft1;
+  let Inst{11}    = 1;
+  let Inst{10-0}  = kpe;
 }
 
+
 //===----------------------------------------------------------------------===//
-// Format J instruction class in Mips : <|opcode|address|>
+// Format 3 instruction class in Risco
 //===----------------------------------------------------------------------===//
 
-class FJ<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern,
-         InstrItinClass itin>: MipsInst<outs, ins, asmstr, pattern, itin> 
+class F3<bits<2> T, bits<5> C, bits<1> APS,
+         dag outs, dag ins, string asmstr,
+         list<dag> pattern> :
+      RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
-  bits<26> addr;
+  bits<17> kgl;
 
-  let opcode = op;
-  
-  let Inst{25-0} = addr;
+  let f1_f0 = 0b01;
+
+  let Inst{16-0} = kgl;
 }
 
-//===----------------------------------------------------------------------===//
-//
-//  FLOATING POINT INSTRUCTION FORMATS
-//
-//  opcode  - operation code.
-//  fs      - src reg.
-//  ft      - dst reg (on a 2 regs instr) or src reg (on a 3 reg instr).
-//  fd      - dst reg, only used on 3 regs instr.
-//  fmt     - double or single precision.
-//  funct   - combined with opcode field give us an operation code.
-//
-//===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// Format FR instruction class in Mips : <|opcode|fmt|ft|fs|fd|funct|>
+// Format 4 instruction class in Risco
 //===----------------------------------------------------------------------===//
 
-class FFR<bits<6> op, bits<6> _funct, bits<5> _fmt, dag outs, dag ins, 
-          string asmstr, list<dag> pattern> : 
-          MipsInst<outs, ins, asmstr, pattern, NoItinerary> 
+class F4<bits<2> T, bits<5> C, bits<1> APS,
+         dag outs, dag ins, string asmstr,
+         list<dag> pattern> :
+      RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
-  bits<5>  fd;
-  bits<5>  fs;
-  bits<5>  ft;
-  bits<5>  fmt;
-  bits<6>  funct;
+  bits<17> kgh;
 
-  let opcode = op;
-  let funct  = _funct;
-  let fmt    = _fmt;
+  let f1_f0 = 0b10;
 
-  let Inst{25-21} = fmt;
-  let Inst{20-16} = ft; 
-  let Inst{15-11} = fs;
-  let Inst{10-6}  = fd;
-  let Inst{5-0}   = funct;
+  let Inst{16-0} = kgh;
 }
 
+
 //===----------------------------------------------------------------------===//
-// Format FI instruction class in Mips : <|opcode|base|ft|immediate|>
+// Format 5 instruction class in Risco
 //===----------------------------------------------------------------------===//
 
-class FFI<bits<6> op, dag outs, dag ins, string asmstr, list<dag> pattern>: 
-          MipsInst<outs, ins, asmstr, pattern, NoItinerary> 
+class F5<bits<2> T, bits<5> C, bits<1> APS,
+         dag outs, dag ins, string asmstr,
+         list<dag> pattern> :
+      RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
-  bits<5>  ft;
-  bits<5>  base;
-  bits<16> imm16;
+  bits<17> kgl;
 
-  let opcode = op;
+  let f1_f0 = 0b11;
 
-  let Inst{25-21} = base;
-  let Inst{20-16} = ft; 
-  let Inst{15-0}  = imm16;
-}
-
-//===----------------------------------------------------------------------===//
-// Compare instruction class in Mips : <|010001|fmt|ft|fs|0000011|condcode|>
-//===----------------------------------------------------------------------===//
-
-class FCC<bits<5> _fmt, dag outs, dag ins, string asmstr, list<dag> pattern> : 
-          MipsInst<outs, ins, asmstr, pattern, NoItinerary> 
-{
-  bits<5>  fs;
-  bits<5>  ft;
-  bits<4>  cc;
-  bits<5>  fmt;
-
-  let opcode = 0x11;
-  let fmt    = _fmt;
-
-  let Inst{25-21} = fmt;
-  let Inst{20-16} = ft; 
-  let Inst{15-11} = fs;
-  let Inst{10-6}  = 0;
-  let Inst{5-4}   = 0b11;
-  let Inst{3-0}   = cc;
+  let Inst{16-0} = kgl;
 }
