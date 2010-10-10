@@ -16,6 +16,9 @@ class RiscoInstr<bits<2> _t1_t0, bits<5> _c4_c0, bits<1> _aps,
 
   let Namespace = "Risco";
 
+  int Format;
+  bool isPseudo = 0;
+
   bits<2> t1_t0 = _t1_t0;
   bits<5> c4_c0 = _c4_c0;
   bits<1> aps   = _aps;
@@ -51,6 +54,8 @@ class F1<bits<2> T, bits<5> C, bits<1> APS,
          list<dag> pattern> :
       RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
+  let Format = 1;
+
   bits<5> ft1;
   bits<5> ft2;
 
@@ -72,6 +77,8 @@ class F2<bits<2> T, bits<5> C, bits<1> APS,
          list<dag> pattern> :
       RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
+  let Format = 2;
+
   bits<5> ft1;
   bits<11> kpe;
 
@@ -92,10 +99,11 @@ class F3<bits<2> T, bits<5> C, bits<1> APS,
          list<dag> pattern> :
       RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
+  let Format = 3;
+
   bits<17> kgl;
 
   let f1_f0 = 0b01;
-
   let Inst{16-0} = kgl;
 }
 
@@ -109,10 +117,11 @@ class F4<bits<2> T, bits<5> C, bits<1> APS,
          list<dag> pattern> :
       RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
+  let Format = 4;
+
   bits<17> kgh;
 
   let f1_f0 = 0b10;
-
   let Inst{16-0} = kgh;
 }
 
@@ -126,9 +135,10 @@ class F5<bits<2> T, bits<5> C, bits<1> APS,
          list<dag> pattern> :
       RiscoInstr<T, C, APS, outs, ins, asmstr, pattern>
 {
+  let Format = 5;
+
   bits<17> kgl;
 
   let f1_f0 = 0b11;
-
   let Inst{16-0} = kgl;
 }
