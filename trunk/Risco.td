@@ -1,4 +1,4 @@
-//===- Risco.td - Describe the Risco Target Machine ----------*- tablegen -*-===//
+//===- Risco.td - Describe the Risco Target Machine --------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,15 +6,18 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-// This is the top level entry point for the Risco target.
+//
+//
 //===----------------------------------------------------------------------===//
 
 
+
 //===----------------------------------------------------------------------===//
-// Target-independent interfaces
+// Target-independent interfaces which we are implementing
 //===----------------------------------------------------------------------===//
 
 include "llvm/Target/Target.td"
+
 
 
 //===----------------------------------------------------------------------===//
@@ -22,9 +25,8 @@ include "llvm/Target/Target.td"
 //===----------------------------------------------------------------------===//
 
 include "RiscoRegisterInfo.td"
-include "RiscoSchedule.td"
-include "RiscoInstrInfo.td"
 include "RiscoCallingConv.td"
+include "RiscoInstrInfo.td"
 
 def RiscoInstrInfo : InstrInfo;
 
@@ -33,9 +35,15 @@ def RiscoInstrInfo : InstrInfo;
 // Risco processors supported.
 //===----------------------------------------------------------------------===//
 
+def : Processor<"simulator", NoItineraries, []>;
 
-def : Processor<"simulator", RiscoGenericItineraries, []>;
+
+
+//===----------------------------------------------------------------------===//
+// Declare the target which we are implementing
+//===----------------------------------------------------------------------===//
 
 def Risco : Target {
+  // Pull in Instruction Info:
   let InstructionSet = RiscoInstrInfo;
 }

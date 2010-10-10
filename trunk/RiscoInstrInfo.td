@@ -42,14 +42,18 @@ def SDT_RICallSeqEnd   : SDCallSeqEnd   <[ SDTCisVT<0, i32>,
 def RIcmpicc : SDNode<"RIISD::CMPICC", SDTIntBinOp, [SDNPOutFlag]>;
 def RIjmpicc : SDNode<"RIISD::JMPICC", SDTRIjmpcc, [SDNPHasChain, SDNPInFlag]>;
 
-def RIhi     : SDNode<"RIISD::HI", SDIntUnaryOp>;
-def RIlo     : SDNode<"RIISD::LO", SDIntUnaryOp>;
+/*
+def RIhi     : SDNode<"RIISD::HI", SDTIntUnaryOp>;
+def RIlo     : SDNode<"RIISD::LO", SDTIntUnaryOp>;
+*/
+
+def RIldi32  : SDNode<"RIISD::LOADI32", SDTIntUnaryOp>;
 
 def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_RICallSeqStart,
   [SDNPHasChain, SDNPOutFlag]>;
 
 def callseq_end   : SDNode<"ISD::CALLSEQ_END", SDT_RICallSeqEnd,
-  [SDNPHasChain, SDNPOptInFlag, SDNPOutFlag>;
+  [SDNPHasChain, SDNPOptInFlag, SDNPOutFlag]>;
 
 def call     : SDNode<"RIISD::CALL", SDT_RICall,
   [SDNPHasChain, SDNPOptInFlag, SDNPOutFlag]>;
@@ -66,9 +70,14 @@ def retflag  : SDNode<"RIISO::RET_FLAG", SDTNone,
 // Instruction operand types
 def brtargetOp    : Operand<OtherVT>;
 def calltargetOp  : Operand<i32>;
-def imm11Op       : Operand<i11>;
-def imm17Op       : Operand<i17>;
-def opRegZero     : Operand<i5>;
+def imm11Op       : Operand<i32>;
+def imm17Op       : Operand<i32>;
+
+let PrintMethod = "printOpRegZero" in
+  def opRegZero     : Operand<i32>;
+
+let PrintMethod = "printHiImmOperand" in
+  def imm17HiOp     : Operand<i32>;
 
 let PrintMethod = "printCCOperand" in
   def CCOp    : Operand<i32>;
@@ -144,79 +153,83 @@ def CC_NE  : CCPat<0b01100>;
 
 
 multiclass F_12np<string mnem> {
-  def _F1 : F1<(outs IntReg:$dst), (ins IntReg:$a, IntReg $b),
+  def _f1 : F1<(outs IntReg:$dst), (ins IntReg:$a, IntReg:$b),
                !strconcat(mnem, " $dst, $a, $b"), []>;
 
-  def _F2 : F2<(outs IntReg:$dst), (ins IntReg:$a, imm11Op:$b),
+  def _f2 : F2<(outs IntReg:$dst), (ins IntReg:$a, imm11Op:$b),
                !strconcat(mnem, " $dst, $a, $b"), []>;
 }
 
-let Itinerary = IIAlu in 
+
 multiclass ArithLogicInstr<string mnem, SDNode OpNode> {
-  def _F1 : F1<(outs IntReg:$dst), (ins IntReg:$a, IntReg:$b),
+  def _f1 : F1<(outs IntReg:$dst), (ins IntReg:$a, IntReg:$b),
                !strconcat(mnem, " $dst, $a, $b"),
                [(set IntReg:$dst, (OpNode IntReg:$a, IntReg:$b))]>;
 
-  def _F2 : F2<(outs IntReg:$dst), (ins IntReg:$a, imm11Op:$b),
+  def _f2 : F2<(outs IntReg:$dst), (ins IntReg:$a, imm11Op:$b),
                !strconcat(mnem, " $dst, $a, $b"),
                [(set IntReg:$dst, (OpNode IntReg:$a, imm11Pat:$b))]>;
 
-  def _F3 : F3<(outs IntReg:$dst), (ins opRegZero:$z, imm17Op:$b),
-               !strconcat(mnem, " $dst, $zero, $b"),
+  def _f3 : F3<(outs IntReg:$dst), (ins imm17Op:$b),
+               !strconcat(mnem, " $dst, %R0, $b"),
                [(set IntReg:$dst, (OpNode 0, imm17Pat:$b))]>;
 
-  let Constraints = "$a = $b" in
-  def _F4 : F4<(outs IntReg:$dst), (ins IntReg:$a, imm17Op:$b),
-               !strconcat(mnem, " $dst, $a, $b"),
-               [(set IntReg:$dst, (OpNode IntReg:$a, imm17Pat:$b))]>;
+  /*
+  let Constraints = "$dst = $a" in {
+    def _f4 : F4<(outs IntReg:$dst), (ins IntReg:$a, imm17Op:$b),
+                 !strconcat(mnem, " $dst, $a, $b"),
+                 [(set IntReg:$dst, (OpNode IntReg:$a, imm17Pat:$b))]>;
+
+    def _f5 : F5<(outs IntReg:$dst), (ins IntReg:$a, imm17HiOp:$b),
+                 !strconcat(mnem, " $dst, $a, $b"), []>;
+  }
+  */
 }
 
 
-let Itinerary = IIAlu in
 multiclass RevArithInstr<string mnem, SDNode OpNode> {
-  def _F2 : F2<(outs IntReg:$dst), (ins IntReg:$a, imm11Op:$b),
+  def _f2 : F2<(outs IntReg:$dst), (ins IntReg:$a, imm11Op:$b),
                !strconcat(mnem, " $dst, $a, $b"),
                [(set IntReg:$dst, (OpNode imm11Pat:$b, IntReg:$a))]>;
 
-  def _F3 : F3<(outs IntReg:$dst), (ins opRegZero:$z, imm17Op:$b),
-               !strconcat(mnem, " $dst, $zero, $b"),
+  def _f3 : F3<(outs IntReg:$dst), (ins imm17Op:$b),
+               !strconcat(mnem, " $dst, %R0, $b"),
                [(set IntReg:$dst, (OpNode imm17Pat:$b, 0))]>;
 
-  let Constraints = "$a = $b" in
-  def _F4 : F4<(outs IntReg:$dst), (ins IntReg:$a, imm17Op:$b),
+  /*
+  let Constraints = "$dst = $a" in
+  def _f4 : F4<(outs IntReg:$dst), (ins IntReg:$a, imm17Op:$b),
                !strconcat(mnem, " $dst, $a, $b"),
                [(set IntReg:$dst, (OpNode imm17Pat:$b, IntReg:$a))]>;
+  */
 }
 
 
-let Itinerary = IILoad,
-    canFoldAsLoad = 1,
+let canFoldAsLoad = 1,
     hasDelaySlot = 1 in
-multiclass LoadInstr<string mnem, SDNode OpNode> {
-  def _F1 : F1<(outs IntReg:$dst), (ins MEMrrOp:$addr),
+multiclass LoadInstr<string mnem, PatFrag OpNode> {
+  def _f1 : F1<(outs IntReg:$dst), (ins MEMrrOp:$addr),
                !strconcat(mnem, " $dst, [$addr]"),
                [(set IntReg:$dst, (OpNode ADDRrr:$addr))]>;
 
-  def _F2 : F2<(outs IntReg:$dst), (ins IntReg:$a, imm11Op:$b),
+  def _f2 : F2<(outs IntReg:$dst), (ins MEMriOp:$addr),
                !strconcat(mnem, " $dst, [$addr]"),
                [(set IntReg:$dst, (OpNode ADDRri:$addr))]>;
 }
 
 
-let Itinerary = IIStore in
-multiclass StoreInstr<string mnem, SDNode OpNode> {
-  def _F1 : F1<(outs), (ins MEMrrOp:$addr, IntReg:$a),
-               !strconcat(mnem, " [$addr], $a",
+multiclass StoreInstr<string mnem, PatFrag OpNode> {
+  def _f1 : F1<(outs), (ins MEMrrOp:$addr, IntReg:$a),
+               !strconcat(mnem, " [$addr], $a"),
                [(OpNode IntReg:$a, ADDRrr:$addr)]>;
 
-  def _F2 : F2<(outs), (ins MEMriOp:$addr, IntReg:$a),
-               !strconcat(mnem, " [$addr], $a",
+  def _f2 : F2<(outs), (ins MEMriOp:$addr, IntReg:$a),
+               !strconcat(mnem, " [$addr], $a"),
                [(OpNode IntReg:$a, ADDRri:$addr)]>;
 }
 
 
-let Itinerary = IIBranch,
-    isBranch = 1,
+let isBranch = 1,
     isTerminator = 1,
     hasDelaySlot = 1 in
 {
@@ -228,8 +241,8 @@ let Itinerary = IIBranch,
 
   let Uses = [PSW] in
   class CondBranchInstr<string mnem>
-        : F1<(outs), (ins brtarget:$dst, CCOp:$cc),
-             !strconcat(mnem, "$cc $dst",
+        : F1<(outs), (ins brtargetOp:$dst, CCOp:$cc),
+             !strconcat(mnem, "$cc $dst"),
              [(RIjmpicc bb:$dst, imm:$cc)]>;
 }
 
@@ -240,17 +253,17 @@ let isCall = 1,
     Defs = [T0, T1, T2, T3, T4, T5, T6, T7, T8, T9] in
 multiclass CallInstr<string mnem> {
   // Indirect call (rr)
-  def _F1 : F1<(outs), (ins MEMrrOp:$ptr),
+  def _f1 : F1<(outs), (ins MEMrrOp:$ptr),
                !strconcat(mnem, " $ptr"),
                [(call ADDRrr:$ptr)]>;
 
   // Indirect call (ri)
-  def _F2 : F2<(outs), (ins MEMriOp:$ptr),
+  def _f2 : F2<(outs), (ins MEMriOp:$ptr),
                !strconcat(mnem, " $ptr"),
                [(call ADDRri:$ptr)]>;
 
   // Direct call
-  def _F3 : F3<(outs), (ins calltargetOp:$dst),
+  def _f3 : F3<(outs), (ins calltargetOp:$dst),
                !strconcat(mnem, " $dst"), []>;  
 }
 
@@ -289,7 +302,7 @@ def RET : F1<(outs), (ins), "ret", [(retflag)]> {
 //===----------------------------------------------------------------------===//
 
 
-def NOP : RiscoInstr<0,0,0,(outs),(ins),"nop",[]>;
+def NOP : RiscoInstr<(outs), (ins), "nop", []>;
 
 let isCommutable = 1 in {
   defm ADD : ArithLogicInstr<"add", add>;
@@ -318,10 +331,10 @@ let Uses = [SP], Defs = [SP] in {
   defm LEAVE : F_12np<"leave">;
 }
 
-defm JMP     : BranchInstr<"jmp">;
-defm JMPCOND : CondBranchInstr<"jmp">;
+def JMP     : BranchInstr<"jmp">;
+def JMPCOND : CondBranchInstr<"jmp">;
 
-defm CALL    : CallInstr<"call">;
+defm CALL   : CallInstr<"call">;
 
 
 
@@ -329,138 +342,17 @@ defm CALL    : CallInstr<"call">;
 //  Arbitrary patterns that map to one or more instructions
 //===----------------------------------------------------------------------===//
 
+
 // Small immediates
-def : Pat<(i32 immSExt16:$in),
-          (ADDiu ZERO, imm:$in)>;
-def : Pat<(i32 immZExt16:$in),
-          (ORi ZERO, imm:$in)>;
+def : Pat<(i32 imm11Pat:$val), (OR_f2 ZERO, imm:$val)>;
+def : Pat<(i32 imm17Pat:$val), (OR_f3 imm:$val)>;
 
 // Arbitrary immediates
-def : Pat<(i32 imm:$imm),
-          (ORi (LUi (HI16 imm:$imm)), (LO16 imm:$imm))>;
+// def : Pat<(i32 imm:$val), (RIldi32 imm:$val)>;
 
-// Carry patterns
-def : Pat<(subc IntReg:$lhs, IntReg:$rhs),
-          (SUBu IntReg:$lhs, IntReg:$rhs)>;
-def : Pat<(addc IntReg:$lhs, IntReg:$rhs),
-          (ADDu IntReg:$lhs, IntReg:$rhs)>;
-def : Pat<(addc  IntReg:$src, imm:$imm),
-          (ADDiu IntReg:$src, imm:$imm)>;
-
-// Call
-def : Pat<(RiscoJmpLink (i32 tglobaladdr:$dst)),
-          (JAL tglobaladdr:$dst)>;
-def : Pat<(RiscoJmpLink (i32 texternalsym:$dst)),
-          (JAL texternalsym:$dst)>;
-//def : Pat<(RiscoJmpLink IntReg:$dst),
-//          (JALR IntReg:$dst)>;
-
-// hi/lo relocs
-def : Pat<(RiscoHi tglobaladdr:$in), (LUi tglobaladdr:$in)>;
-def : Pat<(add IntReg:$hi, (RiscoLo tglobaladdr:$lo)),
-          (ADDiu IntReg:$hi, tglobaladdr:$lo)>;
-
-def : Pat<(RiscoHi tjumptable:$in), (LUi tjumptable:$in)>;
-def : Pat<(add IntReg:$hi, (RiscoLo tjumptable:$lo)),
-          (ADDiu IntReg:$hi, tjumptable:$lo)>;
-
-def : Pat<(RiscoHi tconstpool:$in), (LUi tconstpool:$in)>;
-def : Pat<(add IntReg:$hi, (RiscoLo tconstpool:$lo)),
-          (ADDiu IntReg:$hi, tconstpool:$lo)>;
-
-// gp_rel relocs
-def : Pat<(add IntReg:$gp, (RiscoGPRel tglobaladdr:$in)),
-          (ADDiu IntReg:$gp, tglobaladdr:$in)>;
-def : Pat<(add IntReg:$gp, (RiscoGPRel tconstpool:$in)),
-          (ADDiu IntReg:$gp, tconstpool:$in)>;
+// Calls
+def : Pat<(call tglobaladdr:$dst),  (CALL_f3 tglobaladdr:$dst)>;
+def : Pat<(call texternalsym:$dst), (CALL_f3 texternalsym:$dst)>;
 
 // Risco does not have "not", so we expand our way
-def : Pat<(not IntReg:$in),
-          (NOR IntReg:$in, ZERO)>;
-
-// extended load and stores
-def : Pat<(extloadi1  addr:$src), (LBu addr:$src)>;
-def : Pat<(extloadi8  addr:$src), (LBu addr:$src)>;
-def : Pat<(extloadi16 addr:$src), (LHu addr:$src)>;
-
-// peepholes
-def : Pat<(store (i32 0), addr:$dst), (SW ZERO, addr:$dst)>;
-
-// brcond patterns
-def : Pat<(brcond (setne IntReg:$lhs, 0), bb:$dst),
-          (BNE IntReg:$lhs, ZERO, bb:$dst)>;
-def : Pat<(brcond (seteq IntReg:$lhs, 0), bb:$dst),
-          (BEQ IntReg:$lhs, ZERO, bb:$dst)>;
-
-def : Pat<(brcond (setge IntReg:$lhs, IntReg:$rhs), bb:$dst),
-          (BEQ (SLT IntReg:$lhs, IntReg:$rhs), ZERO, bb:$dst)>;
-def : Pat<(brcond (setuge IntReg:$lhs, IntReg:$rhs), bb:$dst),
-          (BEQ (SLTu IntReg:$lhs, IntReg:$rhs), ZERO, bb:$dst)>;
-def : Pat<(brcond (setge IntReg:$lhs, immSExt16:$rhs), bb:$dst),
-          (BEQ (SLTi IntReg:$lhs, immSExt16:$rhs), ZERO, bb:$dst)>;
-def : Pat<(brcond (setuge IntReg:$lhs, immSExt16:$rhs), bb:$dst),
-          (BEQ (SLTiu IntReg:$lhs, immSExt16:$rhs), ZERO, bb:$dst)>;
-
-def : Pat<(brcond (setle IntReg:$lhs, IntReg:$rhs), bb:$dst),
-          (BEQ (SLT IntReg:$rhs, IntReg:$lhs), ZERO, bb:$dst)>;
-def : Pat<(brcond (setule IntReg:$lhs, IntReg:$rhs), bb:$dst),
-          (BEQ (SLTu IntReg:$rhs, IntReg:$lhs), ZERO, bb:$dst)>;
-
-def : Pat<(brcond IntReg:$cond, bb:$dst),
-          (BNE IntReg:$cond, ZERO, bb:$dst)>;
-
-// select patterns
-def : Pat<(select (setge IntReg:$lhs, IntReg:$rhs), IntReg:$T, IntReg:$F),
-          (MOVZ IntReg:$F, IntReg:$T, (SLT IntReg:$lhs, IntReg:$rhs))>;
-def : Pat<(select (setuge IntReg:$lhs, IntReg:$rhs), IntReg:$T, IntReg:$F),
-          (MOVZ IntReg:$F, IntReg:$T, (SLTu IntReg:$lhs, IntReg:$rhs))>;
-def : Pat<(select (setge IntReg:$lhs, immSExt16:$rhs), IntReg:$T, IntReg:$F),
-          (MOVZ IntReg:$F, IntReg:$T, (SLTi IntReg:$lhs, immSExt16:$rhs))>;
-def : Pat<(select (setuge IntReg:$lh, immSExt16:$rh), IntReg:$T, IntReg:$F),
-          (MOVZ IntReg:$F, IntReg:$T, (SLTiu IntReg:$lh, immSExt16:$rh))>;
-
-def : Pat<(select (setle IntReg:$lhs, IntReg:$rhs), IntReg:$T, IntReg:$F),
-          (MOVZ IntReg:$F, IntReg:$T, (SLT IntReg:$rhs, IntReg:$lhs))>;
-def : Pat<(select (setule IntReg:$lhs, IntReg:$rhs), IntReg:$T, IntReg:$F),
-          (MOVZ IntReg:$F, IntReg:$T, (SLTu IntReg:$rhs, IntReg:$lhs))>;
-
-def : Pat<(select (seteq IntReg:$lhs, IntReg:$rhs), IntReg:$T, IntReg:$F),
-          (MOVZ IntReg:$F, IntReg:$T, (XOR IntReg:$lhs, IntReg:$rhs))>;
-def : Pat<(select (setne IntReg:$lhs, IntReg:$rhs), IntReg:$T, IntReg:$F),
-          (MOVN IntReg:$F, IntReg:$T, (XOR IntReg:$lhs, IntReg:$rhs))>;
-
-def : Pat<(select IntReg:$cond, IntReg:$T, IntReg:$F),
-          (MOVN IntReg:$F, IntReg:$T, IntReg:$cond)>;
-
-// setcc patterns
-def : Pat<(seteq IntReg:$lhs, IntReg:$rhs),
-          (SLTu (XOR IntReg:$lhs, IntReg:$rhs), 1)>;
-def : Pat<(setne IntReg:$lhs, IntReg:$rhs),
-          (SLTu ZERO, (XOR IntReg:$lhs, IntReg:$rhs))>;
-
-def : Pat<(setle IntReg:$lhs, IntReg:$rhs),
-          (XORi (SLT IntReg:$rhs, IntReg:$lhs), 1)>;
-def : Pat<(setule IntReg:$lhs, IntReg:$rhs),
-          (XORi (SLTu IntReg:$rhs, IntReg:$lhs), 1)>;
-
-def : Pat<(setgt IntReg:$lhs, IntReg:$rhs),
-          (SLT IntReg:$rhs, IntReg:$lhs)>;
-def : Pat<(setugt IntReg:$lhs, IntReg:$rhs),
-          (SLTu IntReg:$rhs, IntReg:$lhs)>;
-
-def : Pat<(setge IntReg:$lhs, IntReg:$rhs),
-          (XORi (SLT IntReg:$lhs, IntReg:$rhs), 1)>;
-def : Pat<(setuge IntReg:$lhs, IntReg:$rhs),
-          (XORi (SLTu IntReg:$lhs, IntReg:$rhs), 1)>;
-
-def : Pat<(setge IntReg:$lhs, immSExt16:$rhs),
-          (XORi (SLTi IntReg:$lhs, immSExt16:$rhs), 1)>;
-def : Pat<(setuge IntReg:$lhs, immSExt16:$rhs),
-          (XORi (SLTiu IntReg:$lhs, immSExt16:$rhs), 1)>;
-
-//===----------------------------------------------------------------------===//
-// Floating Point Support
-//===----------------------------------------------------------------------===//
-
-include "RiscoInstrFPU.td"
-
+def : Pat<(not IntReg:$in), (SUB_f1 ZERO, IntReg:$in)>;
