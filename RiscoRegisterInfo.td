@@ -16,7 +16,7 @@
 class RiscoReg<bits<5> num, string n> : Register<n> {
   field bits<5> Num = num;
   let Namespace = "Risco";
-  let DwarfRegNum = [num];
+  let DwarfNumbers = [-1];
 }
 
 
@@ -75,7 +75,7 @@ def IntReg : RegisterClass<"Risco", [i32], 32,
   // Callee saved
   S0, S1, S2, S3, S4, S5, S6, S7, S8, S9,
   // Reserved
-  ZERO, PSW, RA, FP, SP
+  ZERO, PSW, RA, FP, SP]>
 {
   let MethodProtos = [{
     iterator allocation_order_end(const MachineFunction &MF) const;
