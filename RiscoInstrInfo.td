@@ -42,12 +42,8 @@ def SDT_RICallSeqEnd   : SDCallSeqEnd   <[ SDTCisVT<0, i32>,
 def RIcmpicc : SDNode<"RIISD::CMPICC", SDTIntBinOp, [SDNPOutFlag]>;
 def RIjmpicc : SDNode<"RIISD::JMPICC", SDTRIjmpcc, [SDNPHasChain, SDNPInFlag]>;
 
-/*
 def RIhi     : SDNode<"RIISD::HI", SDTIntUnaryOp>;
 def RIlo     : SDNode<"RIISD::LO", SDTIntUnaryOp>;
-*/
-
-def RIldi32  : SDNode<"RIISD::LOADI32", SDTIntUnaryOp>;
 
 def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_RICallSeqStart,
   [SDNPHasChain, SDNPOutFlag]>;
@@ -76,9 +72,6 @@ def imm17Op       : Operand<i32>;
 let PrintMethod = "printOpRegZero" in
   def opRegZero     : Operand<i32>;
 
-let PrintMethod = "printHiImmOperand" in
-  def imm17HiOp     : Operand<i32>;
-
 let PrintMethod = "printCCOperand" in
   def CCOp    : Operand<i32>;
 
@@ -95,13 +88,29 @@ def imm0Pat : PatLeaf<(imm), [{ return N->getSExtValue() == 0; }]>;
 
 // Transformation Function - get the lower 16 bits.
 def LO16 : SDNodeXForm<imm, [{
-  return getI32Imm((unsigned)N->getZExtValue() & 0xFFFF);
+  return CurDAG->getTargetConstant(
+      (unsigned)N->getZExtValue() & ((1<<17)-1), MVT::i32
+  );
 }]>;
 
 // Transformation Function - get the higher 16 bits.
 def HI16 : SDNodeXForm<imm, [{
-  return getI32Imm((unsigned)N->getZExtValue() >> 16);
+  return CurDAG->getTargetConstant(
+      (unsigned)N->getZExtValue() >> 16, MVT::i32
+  );
 }]>;
+
+
+// Pattern for SETHI immediates
+def SETHIimm : PatLeaf<(imm), [{
+  return (((unsigned)N->getZExtValue() >> 16) << 16) ==
+         (unsigned)N->getZExtValue();
+}], HI16>;
+
+// Pattern for SETLO immediates
+def SETLOimm : PatLeaf<(imm), [{
+  return (((unsigned)N->getZExtValue() >> 16) == 0);
+}], LO16>;
 
 
 // Addressing modes patterns
@@ -126,24 +135,24 @@ let PrintMethod = "printMemOperand" in {
 // Instructions condition codes
 //===----------------------------------------------------------------------===//
 
-class CCPat<int N> : PatLeaf<(i32 N)>;
-def CC_TR  : CCPat<0b11111>;
-def CC_NS  : CCPat<0b10001>;
-def CC_CS  : CCPat<0b10010>;
-def CC_OS  : CCPat<0b10100>;
-def CC_ZS  : CCPat<0b11000>;
-def CC_GE  : CCPat<0b10011>;
-def CC_GT  : CCPat<0b10110>;
-def CC_EQ  : CCPat<0b11100>;
+class ICCPat<int N> : PatLeaf<(i32 N)>;
+def ICC_TR  : ICCPat<0b11111>;
+def ICC_NS  : ICCPat<0b10001>;
+def ICC_CS  : CCPat<0b10010>;
+def ICC_OS  : ICCPat<0b10100>;
+def ICC_ZS  : ICCPat<0b11000>;
+def ICC_GE  : ICCPat<0b10011>;
+def ICC_GT  : ICCPat<0b10110>;
+def ICC_EQ  : ICCPat<0b11100>;
 
-def CC_FL  : CCPat<0b00000>;
-def CC_NN  : CCPat<0b00001>;
-def CC_NC  : CCPat<0b00010>;
-def CC_NO  : CCPat<0b00100>;
-def CC_NZ  : CCPat<0b01000>;
-def CC_LT  : CCPat<0b00011>;
-def CC_LE  : CCPat<0b00110>;
-def CC_NE  : CCPat<0b01100>;
+def ICC_FL  : ICCPat<0b00000>;
+def ICC_NN  : ICCPat<0b00001>;
+def ICC_NC  : ICCPat<0b00010>;
+def ICC_NO  : ICCPat<0b00100>;
+def ICC_NZ  : ICCPat<0b01000>;
+def ICC_LT  : ICCPat<0b00011>;
+def ICC_LE  : ICCPat<0b00110>;
+def ICC_NE  : ICCPat<0b01100>;
 
 
 
@@ -179,9 +188,6 @@ multiclass ArithLogicInstr<string mnem, SDNode OpNode> {
     def _f4 : F4<(outs IntReg:$dst), (ins IntReg:$a, imm17Op:$b),
                  !strconcat(mnem, " $dst, $a, $b"),
                  [(set IntReg:$dst, (OpNode IntReg:$a, imm17Pat:$b))]>;
-
-    def _f5 : F5<(outs IntReg:$dst), (ins IntReg:$a, imm17HiOp:$b),
-                 !strconcat(mnem, " $dst, $a, $b"), []>;
   }
   */
 }
@@ -202,6 +208,18 @@ multiclass RevArithInstr<string mnem, SDNode OpNode> {
                !strconcat(mnem, " $dst, $a, $b"),
                [(set IntReg:$dst, (OpNode imm17Pat:$b, IntReg:$a))]>;
   */
+}
+
+
+class SetHiInstr : F4<(outs IntReg:$dst), (ins i32imm:$src),
+                      "sethi $dst, @$src",
+                      [(set IntReg:$dst, SETHIimm:$src)]>;
+
+class SetLoInstr : F1<(outs IntReg:$dst), (ins IntReg:$a, i32imm:$b),
+                      "setlo ($dst, $a, $b)",
+                      [(set IntReg:$dst, (add IntReg:$a, SETLOimm:$b))]>
+{
+  let isPseudo = 1;
 }
 
 
@@ -279,13 +297,13 @@ class Pseudo<dag outs, dag ins, string mnem, list<dag> pattern>
 }
 
 let Defs = [SP], Uses = [SP] in {
-  def RIADJCALLSTACKDOWN : Pseudo<(outs), (ins i32imm:$amt),
-                                  "!ADJCALLSTACKDOWN $amt",
-                                  [(callseq_start timm:$amt)]>;
+  def ADJCALLSTACKDOWN : Pseudo<(outs), (ins i32imm:$amt),
+                                "!ADJCALLSTACKDOWN $amt",
+                                [(callseq_start timm:$amt)]>;
 
-  def RIADJCALLSTACKUP   : Pseudo<(outs), (ins i32imm:$amt1, i32imm:$amt2),
-                                  "!ADJCALLSTACKUP $amt1",
-                                  [(callseq_end timm:$amt1, timm:$amt2)]>;
+  def ADJCALLSTACKUP   : Pseudo<(outs), (ins i32imm:$amt1, i32imm:$amt2),
+                                "!ADJCALLSTACKUP $amt1",
+                                [(callseq_end timm:$amt1, timm:$amt2)]>;
 }
 
 def RET : F1<(outs), (ins), "ret", [(retflag)]> {
@@ -323,6 +341,8 @@ defm SLL  : ArithLogicInstr<"sll", shl>;
 defm SRL  : ArithLogicInstr<"srl", srl>;
 defm SRA  : ArithLogicInstr<"sra", sra>;
 
+def SETHI : SetHiInstr;
+
 defm LD : LoadInstr<"ld", load>;
 defm ST : StoreInstr<"st", store>;
 
@@ -348,7 +368,23 @@ def : Pat<(i32 imm11Pat:$val), (OR_f2 ZERO, imm:$val)>;
 def : Pat<(i32 imm17Pat:$val), (OR_f3 imm:$val)>;
 
 // Arbitrary immediates
-// def : Pat<(i32 imm:$val), (RIldi32 imm:$val)>;
+def : Pat<(i32 imm:$val), (SETLO (SETHI (HI16 imm:$val)), (LO16 imm:$val))>;
+
+
+// Global addresses, constant pool entries
+
+def : Pat<(RIhi tglobaladdr:$in), (SETHI tglobaladdr:$in)>;
+def : Pat<(RIlo tglobaladdr:$in), (SETLO ZERO, tglobaladdr:$in)>;
+
+def : Pat<(RIhi tconstpool:$in), (SETHI tconstpool:$in)>;
+def : Pat<(RIlo tconstpool:$in), (SETLO ZERO, tconstpool:$in)>;
+
+def : Pat<(add IntReg:$r, (RIlo tglobaladdr:$in)),
+          (ADD_f2 IntReg:$r, tglobaladdr:$in)>;
+
+def : Pat<(add IntReg:$r, (RIlo tconstpool:$in)),
+          (ADD_f2 IntReg:$r, tconstpool:$in)>;
+
 
 // Calls
 def : Pat<(call tglobaladdr:$dst),  (CALL_f3 tglobaladdr:$dst)>;
